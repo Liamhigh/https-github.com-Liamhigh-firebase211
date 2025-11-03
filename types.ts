@@ -1,4 +1,5 @@
 
+
 export enum MessageAuthor {
   USER = 'user',
   AI = 'ai',
@@ -37,6 +38,10 @@ export interface ChatMessage {
   analysisResult?: AnalysisResult;
   verificationResult?: VerificationResult;
   sealingMetadata?: SealingMetadata;
+  dualStrategies?: {
+    gemini: string;
+    openai: string;
+  };
 }
 
 export enum FileType {

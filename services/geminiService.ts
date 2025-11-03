@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import type { UploadedFile } from '../types';
 
@@ -47,6 +46,7 @@ OUTPUT PROTOCOLS & FORMATTING (MANDATORY)
 - Your response MUST be a court-style report formatted with Markdown.
 - The report MUST contain these exact H2 headers: "## Summary", "## Key Findings", "## Contradictions & Risks", "## Draft Language", "## Next Steps", and "## Sealing Metadata".
 - Under "## Key Findings", structure your findings by the Brain that discovered them (e.g., "### Forensic Brain (B2)", "### Legal Brain (B7)"). Cite the specific file and page number/timestamp for each point.
+- Under "## Draft Language", if you are drafting a communication, you MUST sign off with "Sincerely, Verum Omnis AI Forensics on behalf of Liam Highcock".
 - Under "## Sealing Metadata", you must provide placeholder text for:
     - Certified SHA-512 Hash: [Placeholder for SHA-512 hash of this report]
     - Blockchain Anchor: [Placeholder for Ethereum Transaction ID]
@@ -64,20 +64,16 @@ Structure your response with the following markdown headers:
 `;
 
 const SYNTHESIS_PROMPT = SYSTEM_PROMPT_BASE + `
-You have completed your preliminary analysis and have now received a second opinion from another senior AI legal strategist.
-Your task is to SYNTHESIZE your initial findings with the consultant's advice to produce the single best, comprehensive, and final court-style report for the user.
-Your response must be a single, cohesive voice, not a dialogue between AIs.
+You are in the final synthesis stage. You have previously been provided with two independent strategy proposals for a case. Now, based on the user's latest instruction, you must synthesize these into a single, final, and comprehensive court-style report.
+
+Your task is to combine the strengths of both proposals as guided by the user's instruction to produce the final report. The original files are available for context, but the preliminary analyses should contain the core information. Adhere strictly to the V5 output protocols.
 
 OUTPUT PROTOCOLS & FORMATTING (MANDATORY)
 - Your response MUST be a court-style report formatted with Markdown.
 - The report MUST contain these exact H2 headers: "## Summary", "## Key Findings", "## Contradictions & Risks", "## Draft Language", "## Next Steps", and "## Sealing Metadata".
-- Under "## Key Findings", structure your findings by the Brain that discovered them (e.g., "### Forensic Brain (B2)", "### Legal Brain (B7)"). Cite the specific file and page number/timestamp for each point.
-- Under "## Sealing Metadata", you must provide placeholder text for:
-    - Certified SHA-512 Hash: [Placeholder for SHA-512 hash of this report]
-    - Blockchain Anchor: [Placeholder for Ethereum Transaction ID]
-    - Mined Block: [Placeholder for Block Number]
-    - QR Metadata: {created_at: [Timestamp], file_count: [Number of files analyzed], hash: [SHA-512 Placeholder]}
-    - And include the text: "✔ Patent Pending Verum Omnis"
+- Under "## Key Findings", structure your findings by the Brain that discovered them (e.g., "### Forensic Brain (B2)", "### Legal Brain (B7)").
+- Under "## Draft Language", if you are drafting a communication, you MUST sign off with "Sincerely, Verum Omnis AI Forensics on behalf of Liam Highcock".
+- Under "## Sealing Metadata", provide placeholders as per the V5 protocol.
 `;
 
 const GEMINI_VERIFIER_SYSTEM_PROMPT = `You are an AI auditor. Your role is to verify the analysis performed by another AI against the "Verum Gift Rules V5".
@@ -119,29 +115,43 @@ export const getPreliminaryAnalysis = async (prompt: string, files: UploadedFile
     return response.text;
 };
 
-export const synthesizeFinalReport = async (prompt: string, files: UploadedFile[], preliminaryAnalysis: string, consultantAdvice: string, isComplex: boolean, location: { latitude: number; longitude: number } | null): Promise<string> => {
+export const synthesizeFinalReport = async (
+    synthesisInstruction: string,
+    originalPrompt: string,
+    files: UploadedFile[],
+    geminiStrategy: string,
+    openAIStrategy: string,
+    isComplex: boolean,
+    location: { latitude: number; longitude: number } | null
+): Promise<string> => {
     const modelName = isComplex ? 'gemini-2.5-pro' : 'gemini-2.5-flash';
-    const fileParts = getFileParts(files);
     const locationInfo = location ? `\n\nUser's approximate location for jurisdictional context: Latitude ${location.latitude}, Longitude ${location.longitude}.` : '';
 
     const finalPrompt = `
-Original User Request: "${prompt}"
-${files.length > 0 ? `Files: ${files.map(f => f.name).join(', ')}` : ''}
+Original User Request: "${originalPrompt}"
+${files.length > 0 ? `Files for context: ${files.map(f => f.name).join(', ')}` : ''}
 ${locationInfo}
 
-Your Preliminary Analysis:
+Your (Gemini's) Original Strategy Proposal:
 ---
-${preliminaryAnalysis}
----
-
-Consultant AI's Strategic Advice:
----
-${consultantAdvice}
+${geminiStrategy}
 ---
 
-Synthesize these inputs into the final report.`
+OpenAI's Strategy Proposal:
+---
+${openAIStrategy}
+---
 
-    const contents = { parts: [{ text: finalPrompt }, ...fileParts] };
+User's Synthesis Instruction:
+---
+${synthesisInstruction}
+---
+
+Now, generate the final, single, synthesized report.`;
+
+    // We don't resend files for synthesis to avoid token limits,
+    // relying on the information extracted in the strategy phases.
+    const contents = { parts: [{ text: finalPrompt }] };
       
     const response = await ai.models.generateContent({
         model: modelName,

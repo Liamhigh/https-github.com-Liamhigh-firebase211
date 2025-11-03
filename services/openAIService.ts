@@ -51,6 +51,7 @@ OUTPUT PROTOCOLS & FORMATTING (MANDATORY)
 - Your response MUST be a court-style report formatted with Markdown.
 - The report MUST contain these exact H2 headers: "## Summary", "## Key Findings", "## Contradictions & Risks", "## Draft Language", "## Next Steps", and "## Sealing Metadata".
 - Under "## Key Findings", structure your findings by the Brain that discovered them (e.g., "### Forensic Brain (B2)", "### Legal Brain (B7)"). Cite the specific file and page number/timestamp for each point.
+- Under "## Draft Language", if you are drafting a communication, you MUST sign off with "Sincerely, Verum Omnis AI Forensics on behalf of Liam Highcock".
 - Under "## Sealing Metadata", you must provide placeholder text for:
     - Certified SHA-512 Hash: [Placeholder for SHA-512 hash of this report]
     - Blockchain Anchor: [Placeholder for Ethereum Transaction ID]
@@ -64,6 +65,14 @@ BOUNDS & DISCLAIMER
 - Refer to your outputs as “court-style” or “designed to be court-ready,” never as guaranteed admissible evidence.
 `;
 
+const OPENAI_PRELIMINARY_ANALYSIS_PROMPT = `You are Verum Omnis, a court-style Legal & Forensic AI... [Your V5 Constitution is implied].
+Your current task is to perform a PRELIMINARY analysis. Do not generate the final user-facing report yet.
+Instead, provide a structured breakdown of your initial findings and propose 1-3 potential legal strategies. Be concise. This output will be compared with another AI's analysis.
+Structure your response with the following markdown headers ONLY:
+- ## Preliminary Findings
+- ## Proposed Strategies
+`;
+
 const VERIFIER_SYSTEM_PROMPT = `You are a meticulous AI auditor. Your role is to verify the analysis performed by another AI (Verum Omnis) against a strict set of rules ("Verum Gift Rules V5").
 
 Your task is to review the user's original request, the provided files, and the Verum Omnis AI's generated report. You must determine if the report accurately and rigorously applies the V5 rules.
@@ -74,23 +83,19 @@ Your task is to review the user's original request, the provided files, and the 
 
 Do not repeat the original report. Your response should be a concise verification statement.`;
 
-export const generateAnalysisWithOpenAI = async (
-    prompt: string,
-    files: UploadedFile[]
-): Promise<string> => {
+const callOpenAI = async (systemPrompt: string, userPrompt: string, files: UploadedFile[]) => {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-        return "ERROR:OPENAI_KEY_MISSING";
+        throw new Error("OpenAI API key is not configured.");
     }
 
     const imageFiles = files.filter(f => f.type === FileType.IMAGE);
-    const content: (string | { type: string; text?: string; image_url?: { url: string; }; })[] = [{ type: 'text', text: prompt }];
+    const content: (string | { type: string; text?: string; image_url?: { url: string; }; })[] = [{ type: 'text', text: userPrompt }];
 
     for (const file of imageFiles) {
         content.push({
             type: 'image_url',
             image_url: {
-                // Fix: Use non-null assertion as base64 is guaranteed to exist on files passed here.
                 url: `data:${file.mimeType};base64,${file.base64!}`,
             },
         });
@@ -105,7 +110,7 @@ export const generateAnalysisWithOpenAI = async (
         body: JSON.stringify({
             model: 'gpt-4-turbo',
             messages: [
-                { role: 'system', content: OPENAI_VERUM_OMNIS_SYSTEM_PROMPT },
+                { role: 'system', content: systemPrompt },
                 { role: 'user', content: content as any },
             ],
             temperature: 0.2,
@@ -115,12 +120,20 @@ export const generateAnalysisWithOpenAI = async (
 
     if (!response.ok) {
         const errorData = await response.json();
-        console.error("OpenAI Fallback Analysis API Error:", errorData);
+        console.error("OpenAI API Error:", errorData);
         throw new Error(`OpenAI API request failed with status ${response.status}`);
     }
 
     const data = await response.json();
-    return data.choices[0]?.message?.content?.trim() ?? "Fallback analysis response was empty.";
+    return data.choices[0]?.message?.content?.trim() ?? "OpenAI response was empty.";
+}
+
+
+export const getPreliminaryAnalysisWithOpenAI = async (
+    prompt: string,
+    files: UploadedFile[]
+): Promise<string> => {
+    return callOpenAI(OPENAI_PRELIMINARY_ANALYSIS_PROMPT, prompt, files);
 };
 
 

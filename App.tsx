@@ -8,7 +8,7 @@ import TaxServicePage from './components/TaxServicePage';
 import BusinessServicesPage from './components/BusinessServicesPage';
 import { ChatMessage, MessageAuthor, UploadedFile, FileType } from './types';
 import { getPreliminaryAnalysis, synthesizeFinalReport, generateSimpleChat, verifyAnalysisWithGemini } from './services/geminiService';
-import { verifyAnalysis, generateAnalysisWithOpenAI } from './services/openAIService';
+import { verifyAnalysis, getPreliminaryAnalysisWithOpenAI } from './services/openAIService';
 import { db } from './services/db';
 
 // Helper function to generate SHA-512 hash
@@ -94,6 +94,7 @@ const App: React.FC = () => {
   const [isFilePanelOpen, setIsFilePanelOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState<'firewall' | 'tax' | 'business'>('firewall'); // Page navigation state
   const isInitialLoad = useRef(true);
+  const initialUserPrompt = useRef<string>('');
   
   // Load data from IndexedDB on initial render
   useEffect(() => {
@@ -185,118 +186,88 @@ const App: React.FC = () => {
     })));
 
     try {
-      // Simple chat flow for requests without files
-      if (filesToAnalyze.length === 0) {
+        const lastMessage = messages[messages.length - 1];
+        const isSynthesisRequest = lastMessage?.dualStrategies && (prompt.toLowerCase().includes('synthesize') || prompt.toLowerCase().includes('final report'));
+
+        // Synthesis Flow
+        if (isSynthesisRequest && lastMessage.dualStrategies) {
+            setLoadingState('synthesizing');
+            const finalReport = await synthesizeFinalReport(prompt, initialUserPrompt.current, filesToAnalyze, lastMessage.dualStrategies.gemini, lastMessage.dualStrategies.openai, isComplexMode, location);
+            
+            setLoadingState('verifying');
+            const verificationNotes = await verifyAnalysis(initialUserPrompt.current, filesToAnalyze, finalReport);
+
+            const aiMessage: ChatMessage = {
+                id: `ai-synthesis-${Date.now()}`,
+                author: MessageAuthor.AI,
+                content: finalReport,
+                verificationResult: { notes: verificationNotes, analyst: 'gemini', consultant: 'openai', verifier: 'openai' },
+            };
+            setMessages(prev => [...prev, aiMessage]);
+            return;
+        }
+
+        // Simple Chat Flow (no files)
+        if (filesToAnalyze.length === 0) {
+            setLoadingState('analyzing');
+            const response = await generateSimpleChat(prompt, location);
+            const aiMessage: ChatMessage = { id: `ai-${Date.now()}`, author: MessageAuthor.AI, content: response.text };
+            setMessages(prev => [...prev, aiMessage]);
+            return;
+        }
+
+        // Dual Strategy Analysis Flow (with files)
+        initialUserPrompt.current = prompt; // Store the first prompt of the session
         setLoadingState('analyzing');
-        const response = await generateSimpleChat(prompt, location);
         
-        setLoadingState('verifying');
-        const verificationNotes = await verifyAnalysis(prompt, [], response.text);
+        const [geminiResult, openAIResult] = await Promise.allSettled([
+            getPreliminaryAnalysis(prompt, filesToAnalyze, isComplexMode, location),
+            getPreliminaryAnalysisWithOpenAI(prompt, filesToAnalyze.filter(f => f.type === FileType.IMAGE))
+        ]);
+
+        const geminiStrategy = geminiResult.status === 'fulfilled' ? geminiResult.value : `Gemini analysis failed: ${geminiResult.reason}`;
+        const openAIStrategy = openAIResult.status === 'fulfilled' ? openAIResult.value : `OpenAI analysis failed: ${openAIResult.reason}`;
+
+        if (geminiResult.status === 'rejected' && openAIResult.status === 'rejected') {
+            throw new Error("Both Gemini and OpenAI analyses failed.");
+        }
+
+        const dualStrategyContent = `
+### Dual AI Strategy Session
+Both Gemini and OpenAI have analyzed the evidence and proposed independent strategies. Review both to determine the optimal path forward.
+
+---
+#### Gemini Strategy
+${geminiStrategy}
+
+---
+#### OpenAI Strategy
+${openAIStrategy}
+---
+
+You can now proceed by providing further instructions. For example: "Synthesize the best parts of both strategies into a final report."
+`;
 
         const aiMessage: ChatMessage = {
-          id: `ai-${Date.now()}`,
-          author: MessageAuthor.AI,
-          content: response.text,
-          verificationResult: {
-            notes: verificationNotes,
-            analyst: 'gemini',
-            consultant: 'none',
-            verifier: 'openai',
-          },
+            id: `ai-dual-${Date.now()}`,
+            author: MessageAuthor.AI,
+            content: dualStrategyContent,
+            dualStrategies: { gemini: geminiStrategy, openai: openAIStrategy }
         };
         setMessages(prev => [...prev, aiMessage]);
-        return;
-      }
-
-      // Full multi-stage analysis for requests with files
-      let preliminaryAnalysis: string;
-      let consultantAdvice: string;
-      let finalReport: string;
-      let verificationNotes: string;
-
-      let analyst: 'gemini' | 'openai' = 'gemini';
-      let consultant: 'openai' | 'gemini' | 'none' = 'openai';
-      let verifier: 'openai' | 'gemini' = 'openai';
-
-      // 1. Preliminary Analysis
-      setLoadingState('analyzing');
-      try {
-        preliminaryAnalysis = await getPreliminaryAnalysis(prompt, filesToAnalyze, isComplexMode, location);
-      } catch (geminiError: any) {
-        console.error("Gemini analysis failed. Not falling back as OpenAI is not configured.", geminiError);
-        const detailedError = geminiError?.message || 'An unknown error occurred.';
-        const errorMessage: ChatMessage = {
-            id: `error-${Date.now()}`,
-            author: MessageAuthor.SYSTEM,
-            content: `I'm sorry, the primary AI analysis failed.
-**Error:** ${detailedError}
-
-The fallback analysis service is not available in this environment. Please try adjusting your prompt or uploaded files. If the problem persists, it may be a network or API issue.`
-        };
-        setMessages(prev => [...prev, errorMessage]);
-        setLoadingState('idle');
-        return;
-      }
-
-      // 2. Consultation & Synthesis
-      if (analyst === 'gemini') {
-        setLoadingState('consulting');
-        try {
-          const consultantPrompt = `As a senior legal AI strategist, review the following preliminary analysis and user request. Provide concise, strategic advice to improve the final report. Focus on missed angles, legal precedents, or alternative interpretations. This is for internal review; do not format as a user-facing report.\n\nUser Request: ${prompt}\n\nPreliminary Analysis:\n${preliminaryAnalysis}`;
-          consultantAdvice = await generateAnalysisWithOpenAI(consultantPrompt, filesToAnalyze.filter(f => f.type === FileType.IMAGE));
-           if (consultantAdvice === "ERROR:OPENAI_KEY_MISSING") {
-             console.warn("Consultant (OpenAI) failed: Key missing.");
-             consultant = 'none';
-             consultantAdvice = "Consultation was not available due to missing configuration.";
-          }
-        } catch (consultantError) {
-            console.error("Consultant (OpenAI) failed. Proceeding without consultation.", consultantError);
-            consultant = 'none';
-            consultantAdvice = "Consultation was not available.";
-        }
-        
-        setLoadingState('synthesizing');
-        finalReport = await synthesizeFinalReport(prompt, filesToAnalyze, preliminaryAnalysis, consultantAdvice, isComplexMode, location);
-      } else {
-        // If Gemini failed, the OpenAI analysis is the final report
-        finalReport = preliminaryAnalysis;
-      }
-
-      // 3. Verification
-      setLoadingState('verifying');
-      try {
-        verificationNotes = await verifyAnalysis(prompt, filesToAnalyze, finalReport);
-      } catch (openAIError) {
-        console.error("OpenAI verification failed. Falling back to Gemini.", openAIError);
-        verifier = 'gemini';
-        verificationNotes = await verifyAnalysisWithGemini(prompt, filesToAnalyze, finalReport);
-      }
-      
-      const aiMessage: ChatMessage = {
-        id: `ai-${Date.now()}`,
-        author: MessageAuthor.AI,
-        content: finalReport,
-        verificationResult: {
-          notes: verificationNotes,
-          analyst,
-          consultant,
-          verifier,
-        },
-      };
-      setMessages(prev => [...prev, aiMessage]);
 
     } catch (error) {
       console.error("Critical error in AI analysis pipeline:", error);
       const errorMessage: ChatMessage = {
         id: `error-${Date.now()}`,
         author: MessageAuthor.AI,
-        content: "I'm sorry, a critical error occurred in the AI analysis pipeline. This could be due to network issues or invalid API keys. Please check the console for details and try again."
+        content: `I'm sorry, a critical error occurred in the AI analysis pipeline: ${(error as Error).message}. Please check the console for details and try again.`
       };
       setMessages(prev => [...prev, errorMessage]);
     } finally {
       setLoadingState('idle');
     }
-  }, [uploadedFiles, isComplexMode, location]);
+  }, [uploadedFiles, isComplexMode, location, messages]);
   
   const handleClearCase = () => { 
     setUploadedFiles([]); 
@@ -323,7 +294,7 @@ The fallback analysis service is not available in this environment. Please try a
     });
 
     const qrCodeDataUrl = await QRCode.toDataURL(qrMetaData);
-    const contentWithHash = message.content.replace(/\[Placeholder\]/g, hash);
+    const contentWithHash = message.content.replace(/\[Placeholder for SHA-512 hash of this report\]/g, hash);
 
     const doc = new jsPDF();
     renderMarkdownToPdf(doc, contentWithHash);
