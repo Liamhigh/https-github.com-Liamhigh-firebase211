@@ -21,11 +21,10 @@ export interface SealingMetadata {
     hash: string;
   };
   pageCount: number;
-  blockchainAnchor?: {
+  cloudAnchor?: {
     status: 'pending' | 'confirmed' | 'failed';
-    txHash?: string;
-    blockNumber?: number;
-    explorerUrl?: string;
+    storagePath?: string;
+    firestoreId?: string;
     error?: string;
   };
 }
@@ -60,6 +59,8 @@ export interface UploadedFile {
   size: number;
   // Fix: Add optional base64 property for API usage.
   base64?: string;
+  sha512?: string;
+  addedAt?: string;
 }
 
 export interface AnalysisResult {

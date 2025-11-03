@@ -1,6 +1,6 @@
 {
   "name": "Verum Omnis: Legal AI Assistant",
-  "description": "An AI-powered legal assistant to analyze documents, images, audio, and video. It flags contradictions, identifies potential issues, and generates court-style summaries. This tool is for informational purposes and is not a substitute for a licensed attorney.",
+  "description": "An AI-powered legal assistant that provides court-ready forensic analysis of documents, images, audio, and video. It generates formal reports and drafts legal correspondence to support users in legal matters, including self-representation.",
   "requestFramePermissions": [
     "microphone",
     "geolocation"

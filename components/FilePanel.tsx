@@ -99,30 +99,56 @@ const FilePanel: React.FC<FilePanelProps> = ({ files, onClearCase, isOpen, onClo
         `}
       >
         <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-          <h2 className="font-bold text-lg text-gray-800 dark:text-white">Case Files</h2>
+          <h2 className="font-bold text-lg text-gray-800 dark:text-white">Case Data</h2>
           <button onClick={onClose} className="text-gray-500 dark:text-gray-400 md:hidden" aria-label="Close file panel">
             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        <div className="flex-grow p-4 overflow-y-auto">
-          <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Evidence Attached</h3>
-          {files.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">No files uploaded.</p>
-          ) : (
-            <ul className="space-y-2">
-              {files.map(file => (
-                <li key={file.id} className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300">
-                  <FileIcon className="h-5 w-5 text-gray-400" />
-                  <span className="truncate flex-grow">{file.name}</span>
-                  <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
-                    {(file.size / 1024).toFixed(1)} KB
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
+        <div className="flex-grow p-4 overflow-y-auto space-y-6">
+          
+          <div>
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Case Narrative</h3>
+            <div className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700/50 p-2 rounded-md">
+                <FileIcon className="h-5 w-5 text-blue-500" />
+                <span className="truncate flex-grow font-medium">narrative.txt</span>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">
+              A live summary of events and communications for fast AI context.
+            </p>
+          </div>
 
-          <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+          <div>
+            <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">Evidence Locker</h3>
+            <div className="text-sm bg-white dark:bg-gray-700/50 p-3 rounded-md space-y-2 max-h-48 overflow-y-auto">
+              {files.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400">No evidence files uploaded.</p>
+              ) : (
+                files.map(file => (
+                  <div key={file.id}>
+                    <p className="font-medium text-gray-800 dark:text-gray-200 truncate flex items-center">
+                      <FileIcon className="h-4 w-4 mr-2 flex-shrink-0" />
+                      {file.name}
+                    </p>
+                    {file.sha512 ? (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 font-mono break-all ml-6" title={file.sha512}>
+                            SHA-512: {file.sha512.substring(0,32)}...
+                        </p>
+                    ) : (
+                        <p className="text-xs text-gray-500 dark:text-gray-400 font-mono break-all ml-6">
+                            <LoadingSpinner className="h-3 w-3 inline-block mr-1" />
+                            Hashing...
+                        </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 italic">
+              Client-side hashed evidence files for analysis.
+            </p>
+          </div>
+
+          <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-3">System Integrity</h3>
             <div className="space-y-2 text-sm">
                 <div className="flex justify-between items-center"><span className="text-gray-600 dark:text-gray-300">Local App</span><StatusIcon status={verificationStatus.local} /></div>

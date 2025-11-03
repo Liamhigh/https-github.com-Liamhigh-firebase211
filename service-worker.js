@@ -1,11 +1,12 @@
-const CACHE_NAME = 'verum-omnis-cache-v1';
+const CACHE_NAME = 'verum-omnis-cache-v3';
 const urlsToCache = [
   '/',
   '/index.html',
   '/index.tsx',
   '/favicon.svg',
-  // NOTE: Add paths to your icon files here once you have them
-  // e.g., '/icon-192.png', '/icon-512.png'
+  '/manifest.json',
+  '/icon-192.png',
+  '/icon-512.png'
 ];
 
 self.addEventListener('install', event => {

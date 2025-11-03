@@ -2,7 +2,8 @@
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { PaperclipIcon, MicIcon, SendIcon, BrainIcon } from './Icons';
-import { GoogleGenAI, LiveSession, LiveServerMessage, Modality } from '@google/genai';
+// Fix: Removed non-existent 'LiveSession' type from '@google/genai' import.
+import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => void;
@@ -22,11 +23,15 @@ function encode(bytes: Uint8Array): string {
     return btoa(binary);
 }
 
+// Fix: Instantiate GoogleGenAI at the module level to enable type inference.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+
 const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, onFilesChange, isLoading, isComplexMode, onToggleComplexMode }) => {
   const [inputValue, setInputValue] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const sessionPromiseRef = useRef<Promise<LiveSession> | null>(null);
+  // Fix: Used ReturnType to correctly infer the session promise type.
+  const sessionPromiseRef = useRef<ReturnType<typeof ai.live.connect> | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
@@ -71,7 +76,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage, onFilesChange, isL
     setInputValue('Listening...');
 
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY! });
+        // Fix: Use the module-level 'ai' instance.
         sessionPromiseRef.current = ai.live.connect({
             model: 'gemini-2.5-flash-native-audio-preview-09-2025',
             callbacks: {
